@@ -72,7 +72,7 @@ COPY --from=backend /backend/addition/article/template.docx /addition/article/te
 COPY --from=frontend /app/dist /app/dist
 
 # Volumes
-VOLUME ["/config", "/logs", "/storage"]
+# VOLUME ["/config", "/logs", "/storage"]
 
 # Expose port
 EXPOSE 8094
