@@ -1,63 +1,51 @@
 # Author: ProgramZmh
 # License: Apache-2.0
-# Description: Optimized Dockerfile for chatnio
+# Description: Dockerfile for chatnio
 
 # Specify the platform directly if you are building for a specific architecture
-# For ARM64, use FROM --platform=linux/arm64 golang:1.20-alpine AS backend
-FROM --platform=linux/amd64 golang:1.20-alpine AS backend
+FROM --platform=linux/amd64 golang:1.20-alpine AS builder
 
 WORKDIR /backend
-COPY go.mod go.sum ./
-RUN go mod download
 COPY . .
 
-# Set go proxy to https://goproxy.cn (open for vps in China Mainland)
+# Set go proxy (uncomment if needed)
 # RUN go env -w GOPROXY=https://goproxy.cn,direct
 
-# Install build dependencies and cross-compilation toolchain
+ARG TARGETARCH
+ARG TARGETOS
+ENV GOOS=$TARGETOS GOARCH=$TARGETARCH GO111MODULE=on CGO_ENABLED=1
+
+# Install build dependencies and WebP development libraries
 RUN apk add --no-cache \
     gcc \
     musl-dev \
     g++ \
     make \
     linux-headers \
-    && if [ "$TARGETARCH" = "arm64" ]; then \
-    wget -q -O /tmp/cross.tgz https://musl.cc/aarch64-linux-musl-cross.tgz && \
-    tar -xf /tmp/cross.tgz -C /usr/local && \
-    rm /tmp/cross.tgz; \
-    fi \
-    && apk del gcc musl-dev g++ make linux-headers
+    wget \
+    tar \
+    libwebp-dev
 
 # Build backend
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
-    CC=/usr/local/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc \
-    CGO_ENABLED=1 \
-    GOOS=linux \
-    GOARCH=arm64 \
-    go build -o chat -a -ldflags="-extldflags=-static" .; \
-    else \
-    go build -o chat -a -ldflags="-extldflags=-static" .; \
-    fi
+RUN go build -o chat -a -ldflags="-extldflags=-static" .
 
-# For ARM64, use FROM --platform=linux/arm64 node:18-alpine AS frontend
+# Build frontend
 FROM --platform=linux/amd64 node:18-alpine AS frontend
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY ./app .
+
 RUN npm install -g pnpm && \
-    pnpm install --prod
-COPY . .
+    pnpm install && \
+    pnpm run build && \
+    rm -rf node_modules src
 
-RUN pnpm run build && \
-    rm -rf node_modules pnpm-lock.yaml package.json
-
+# Final stage
 FROM alpine:latest
 
 # Install runtime dependencies
 RUN apk add --no-cache \
-    wget \
-    ca-certificates \
-    tzdata && \
+    ca-certificates tzdata && \
     update-ca-certificates 2>/dev/null || true
 
 # Set timezone
@@ -66,11 +54,11 @@ RUN echo "Asia/Shanghai" > /etc/timezone && \
 
 WORKDIR /
 
-# Copy built binaries and assets
-COPY --from=backend /backend/chat /chat
-COPY --from=backend /backend/config.example.yaml /config.example.yaml
-COPY --from=backend /backend/utils/templates /utils/templates
-COPY --from=backend /backend/addition/article/template.docx /addition/article/template.docx
+# Copy built files
+COPY --from=builder /backend/chat /chat
+COPY --from=builder /backend/config.example.yaml /config.example.yaml
+COPY --from=builder /backend/utils/templates /utils/templates
+COPY --from=builder /backend/addition/article/template.docx /addition/article/template.docx
 COPY --from=frontend /app/dist /app/dist
 
 # Volumes
