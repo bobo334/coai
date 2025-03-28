@@ -12,7 +12,11 @@ ENV MYSQL_HOST=br73tpwib4fv8wdhpify-mysql.services.clever-cloud.com \
     MYSQL_DB=br73tpwib4fv8wdhpify \
     MYSQL_USER=u3oofuqvr9yrph5f \
     MYSQL_PASSWORD=4gNrd9kkmrHXNBdvkoET
-  
+
+ENV REDIS_HOST=nozomi.proxy.rlwy.net
+ENV REDIS_PORT=55170
+ENV REDIS_PASSWORD=KiKabHqupHetwiCnRHyDtXjWkgsKMVfV
+
 # Volumes
 EXPOSE 8094
 
