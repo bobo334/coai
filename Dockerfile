@@ -1,18 +1,18 @@
 # Author: ProgramZmh
 # License: Apache-2.0
-# Description: Dockerfile for chatnio
+# Description: Optimized Dockerfile for chatnio
 
 # Specify the platform directly if you are building for a specific architecture
+# For ARM64, use FROM --platform=linux/arm64 golang:1.20-alpine AS backend
 FROM --platform=linux/amd64 golang:1.20-alpine AS backend
 
 WORKDIR /backend
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 
 # Set go proxy to https://goproxy.cn (open for vps in China Mainland)
 # RUN go env -w GOPROXY=https://goproxy.cn,direct
-ARG TARGETARCH
-ARG TARGETOS
-ENV GOOS=$TARGETOS GOARCH=$TARGETARCH GO111MODULE=on CGO_ENABLED=1
 
 # Install build dependencies and cross-compilation toolchain
 RUN apk add --no-cache \
@@ -21,13 +21,12 @@ RUN apk add --no-cache \
     g++ \
     make \
     linux-headers \
-    wget \
-    tar \
     && if [ "$TARGETARCH" = "arm64" ]; then \
     wget -q -O /tmp/cross.tgz https://musl.cc/aarch64-linux-musl-cross.tgz && \
     tar -xf /tmp/cross.tgz -C /usr/local && \
     rm /tmp/cross.tgz; \
-    fi
+    fi \
+    && apk del gcc musl-dev g++ make linux-headers
 
 # Build backend
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
@@ -37,25 +36,28 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     GOARCH=arm64 \
     go build -o chat -a -ldflags="-extldflags=-static" .; \
     else \
-    go install && \
-    go build .; \
+    go build -o chat -a -ldflags="-extldflags=-static" .; \
     fi
 
-FROM --platform=linux/amd64 node:18 AS frontend
+# For ARM64, use FROM --platform=linux/arm64 node:18-alpine AS frontend
+FROM --platform=linux/amd64 node:18-alpine AS frontend
 
 WORKDIR /app
-COPY ./app .
-
+COPY package.json pnpm-lock.yaml ./
 RUN npm install -g pnpm && \
-    pnpm install && \
-    pnpm run build && \
-    rm -rf node_modules src
+    pnpm install --prod
+COPY . .
+
+RUN pnpm run build && \
+    rm -rf node_modules pnpm-lock.yaml package.json
 
 FROM alpine:latest
 
-# Install dependencies
-RUN apk upgrade --no-cache && \
-    apk add --no-cache wget ca-certificates tzdata && \
+# Install runtime dependencies
+RUN apk add --no-cache \
+    wget \
+    ca-certificates \
+    tzdata && \
     update-ca-certificates 2>/dev/null || true
 
 # Set timezone
@@ -64,7 +66,7 @@ RUN echo "Asia/Shanghai" > /etc/timezone && \
 
 WORKDIR /
 
-# Copy dist
+# Copy built binaries and assets
 COPY --from=backend /backend/chat /chat
 COPY --from=backend /backend/config.example.yaml /config.example.yaml
 COPY --from=backend /backend/utils/templates /utils/templates
