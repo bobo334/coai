@@ -2,7 +2,8 @@
 # License: Apache-2.0
 # Description: Dockerfile for chatnio
 
-FROM --platform=$BUILDPLATFORM golang:1.20-alpine AS backend
+# Specify the platform directly if you are building for a specific architecture
+FROM --platform=linux/amd64 golang:1.20-alpine AS backend
 
 WORKDIR /backend
 COPY . .
@@ -40,7 +41,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
     go build .; \
     fi
 
-FROM node:18 AS frontend
+FROM --platform=linux/amd64 node:18 AS frontend
 
 WORKDIR /app
 COPY ./app .
@@ -50,8 +51,7 @@ RUN npm install -g pnpm && \
     pnpm run build && \
     rm -rf node_modules src
 
-
-FROM alpine
+FROM alpine:latest
 
 # Install dependencies
 RUN apk upgrade --no-cache && \
